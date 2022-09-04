@@ -1,0 +1,12 @@
+caveclient
+cloud-volume>=3.1
+diskcache
+navis
+numpy
+pandas
+pyperclip
+requests
+requests-futures
+skeletor>=1.0.0
+tqdm
+fuzzywuzzy
