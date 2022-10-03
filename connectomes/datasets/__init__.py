@@ -23,7 +23,7 @@ from ..meshes.neu import NeuPrintMeshSource
 from ..skeletons.neu import NeuPrintSkeletonSource
 from ..segmentation.cloudvol import CloudVolSegmentationSource
 from ..connectivity.neu import NeuPrintConnectivitySource
-
+from ..annotations.neu import NeuPrintAnnotationSource
 
 
 @functools.lru_cache
@@ -82,6 +82,7 @@ class HemiBrain(BaseDataSet):
         self.skeleton = NeuPrintSkeletonSource(self.client)
         self.segmentation = CloudVolSegmentationSource(seg_source)
         self.connectivity = NeuPrintConnectivitySource(self.client)
+        self.annotations = NeuPrintAnnotationSource(self.client)
 
         self.reference = 'Scheffer et al., eLife (2020)'
 

@@ -20,6 +20,9 @@ class MeshSource(ABC):
     def get(self):
         pass
 
+    def download(self):
+        raise NotImplementedError
+
     def remesh(self):
         raise NotImplementedError
 

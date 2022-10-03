@@ -19,7 +19,7 @@ class ConnectivitySource(ABC):
     def get_partners(self):
         raise NotImplementedError
 
-    def get_adjacency(self):
+    def get_edges(self):
         raise NotImplementedError
 
     def get_synapses(self):

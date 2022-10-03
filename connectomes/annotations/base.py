@@ -15,13 +15,7 @@
 from abc import ABC, abstractmethod
 
 
-class SkeletonSource(ABC):
+class AnnotationSource(ABC):
     @abstractmethod
-    def get(self):
+    def find(self):
         pass
-
-    def download(self):
-        raise NotImplementedError
-
-    def download_all(self):
-        raise NotImplementedError        
