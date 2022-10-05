@@ -17,11 +17,11 @@ logger = logging.getLogger(__name__)
 class BaseDataSet(ABC):
     def __init__(
         self,
-        annotations: tp.Optional[AnnotationSource] = None,
-        connectivity: tp.Optional[ConnectivitySource] = None,
-        mesh: tp.Optional[MeshSource] = None,
-        segmentation: tp.Optional[SegmentationSource] = None,
-        skeleton: tp.Optional[SkeletonSource] = None,
+        annotations: tp.Optional["AnnotationSource"] = None,
+        connectivity: tp.Optional["ConnectivitySource"] = None,
+        mesh: tp.Optional["MeshSource"] = None,
+        segmentation: tp.Optional["SegmentationSource"] = None,
+        skeleton: tp.Optional["SkeletonSource"] = None,
         doi_url: tp.Optional[str] = None,
     ) -> None:
         self.annotations = annotations
