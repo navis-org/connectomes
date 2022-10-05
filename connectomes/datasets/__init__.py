@@ -17,8 +17,7 @@ import fuzzywuzzy
 import neuprint as neu
 import os
 
-from abc import ABC, abstractmethod
-
+from .base import BaseDataSet
 from ..meshes.neu import NeuPrintMeshSource
 from ..skeletons.neu import NeuPrintSkeletonSource
 from ..segmentation.cloudvol import CloudVolSegmentationSource
@@ -44,11 +43,6 @@ def get(dataset, *args, **kwargs):
                          f'you perhaps mean "{match}" instead?')
 
     return DATASETS[dataset](*args, **kwargs)
-
-
-class BaseDataSet(ABC):
-    def __repr__(self):
-        return self.__str__()
 
 
 class HemiBrain(BaseDataSet):
