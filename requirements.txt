@@ -12,3 +12,4 @@ tqdm
 fuzzywuzzy
 neuprint-python
 meshio
+zarr
