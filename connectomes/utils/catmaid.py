@@ -6,12 +6,13 @@ from requests_futures.sessions import FuturesSession
 from requests import Session
 import requests
 import textwrap
+import json
 
 logger = logging.getLogger(__name__)
 
 GET = "GET"
 POST = "POST"
-
+DEFAULT_MAX_WORKERS = 10
 
 class WrappedCatmaidException(requests.HTTPError):
     spacer = "    "
@@ -68,10 +69,10 @@ class CatmaidClient():
     def __init__(
         self,
         server: str,
-        api_token: str,
-        http_user=None,
-        http_password=None,
-        max_workers=10
+        api_token: tp.Optional[str] = None,
+        http_user: tp.Optional[str] = None,
+        http_password: tp.Optional[str] = None,
+        max_workers: int = DEFAULT_MAX_WORKERS,
     ):
         self.session = Session()
         self.max_workers = max_workers
@@ -85,6 +86,18 @@ class CatmaidClient():
             self.session.auth = (http_user, http_password)
         elif http_user or http_password:
             logger.warning("Only one of http_user or http_password set")
+
+    @classmethod
+    def from_json(cls, fpath, max_workers=DEFAULT_MAX_WORKERS):
+        with open(fpath) as f:
+            creds = json.load(f)
+        return cls(
+            creds["server"],
+            creds.get("api_token"),
+            creds.get("http_user"),
+            creds.get("http_password"),
+            max_workers,
+        )
 
     def request_fut(self, method, url, params_or_data=None, **kwargs):
         whole_url = urljoin(self.server, url)
