@@ -12,6 +12,7 @@
 #    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 #    GNU General Public License for more details.
 
+import typing as tp
 import json
 import navis
 import os
@@ -23,6 +24,7 @@ from importlib import reload
 
 import cloudvolume as cv
 import numpy as np
+import pandas as pd
 
 
 __all__ = ['set_chunkedgraph_secret', 'get_chunkedgraph_secret',
@@ -213,3 +215,44 @@ def chunks_to_nm(xyz_ch, vol, voxel_resolution=[4, 4, 40]):
         * voxel_resolution
         * mip_scaling
     )
+
+
+def chunk(it: tp.Iterable, chunks: int) -> tp.Iterable[list]:
+    out = []
+    for item in it:
+        out.append(item)
+        if len(out) >= chunks:
+            yield out
+            out = []
+    if out:
+        yield out
+
+
+class DataFrameBuilder:
+    def __init__(self, columns, dtypes=None):
+        self.columns = {c: [] for c in columns}
+        self.dtypes = dtypes
+        if dtypes is not None and len(dtypes) != len(self.columns):
+            raise ValueError()
+
+    def append_row(self, row: list):
+        if len(row) != len(self.columns):
+            raise ValueError()
+        for item, col in zip(row, self.columns.values()):
+            col.append(item)
+
+    def append_dict(self, row: dict[str, tp.Any]):
+        if len(row) != len(self.columns):
+            raise ValueError()
+        for k, v in row.items():
+            self.columns[k].append(v)
+
+    def build(self) -> pd.DataFrame:
+        cols = dict()
+        for idx, (k, v) in enumerate(self.columns.items()):
+            if self.dtypes:
+                v2 = np.asarray(v, self.dtypes[idx])
+            else:
+                v2 = np.asarray(v)
+            cols[k] = v2
+        return pd.DataFrame.from_dict(cols)
