@@ -8,6 +8,11 @@ from zarr.storage import Store
 import json
 from PIL import Image
 import numpy as np
+import logging
+import sys
+
+logger = logging.getLogger(__name__)
+DIMS = "zyx"
 
 zarr_meta = {
     "zarr_format": 2,
@@ -20,6 +25,7 @@ zarr_meta = {
     "filters": None,
     "dimension_separator": ".",
 }
+
 
 class JpegZarrStore(Store):
     is_listable = False
@@ -45,18 +51,18 @@ class JpegZarrStore(Store):
             "chunks": (1, *im_height_width),
             "fill_value": fill_value,
         })
-        self.meta = json.dumps(meta).encode()
+        self.meta_bytes = json.dumps(meta).encode()
         self.scale = scale
         self.ext = ext
-        self.attrs = json.dumps(attrs or dict()).encode()
+        self.attrs_bytes = json.dumps(attrs or dict()).encode()
 
     def __getitem__(self, key: str) -> bytes:
         if "/" in key:
             raise ValueError(f"{type(self)} does not support groups")
         if key == ".zattrs":
-            return self.attrs
+            return self.attrs_bytes
         if key == ".zarray":
-            return self.meta
+            return self.meta_bytes
         z, y, x = key.split(".")
         tail = self.tile_fmt.format(scale=self.scale, z=z, y=y, x=x, ext=self.ext)
         url = urljoin(self.url_base, tail)
@@ -91,13 +97,34 @@ class JpegZarrStore5(JpegZarrStore):
     fmt = "{scale}/{z}/{y}/{x}.{ext}"
 
 
-STORE_CLASSES = {
+JPEG_STORE_CLASSES = {
     1: JpegZarrStore1,
     4: JpegZarrStore4,
     5: JpegZarrStore5,
 }
 
-class CatmaidTileSourceSelector:
+
+def cli_select(options: dict[int, str], prompt: str = ""):
+    def p(*args, **kwargs):
+        print(*args, **kwargs, file=sys.stderr)
+
+    p(prompt)
+    p("Type number and press enter. Use Ctrl+C to quit.")
+    for k, v in sorted(options.items()):
+        p(f"{k}. {v}")
+
+    opt_str = ", ".join(str(o for o in sorted(options)))
+    selection = input("Selection: ").strip()
+    while True:
+        try:
+            idx = options[int(selection)]
+        except (ValueError, KeyError):
+            p(f"Selection not recognised, must be one of {opt_str}.")
+        else:
+            return idx
+
+
+class CatmaidImageSourceSelector:
     def __init__(self, client: CatmaidClient, project_id: int) -> None:
         self.client = client
         self.project_id = project_id
@@ -120,23 +147,48 @@ class CatmaidTileSourceSelector:
                 continue
 
             if d["orientation"] != "XY":
+                logger.debug("Filtered stack %s for unsupported orientation '%s'", d["sid"], d["orientation"])
                 continue
 
             d["mirrors"] = [
                 mirror
                 for mirror in d["mirrors"]
-                if mirror["tile_source_type"] in CatmaidTileSource.implemented_sources
+                if mirror["tile_source_type"] in CatmaidImageSource.implemented_sources
             ]
             if d["mirrors"]:
                 yield d
+            else:
+                logger.debug("Filtered stack %s for no usable mirrors", d["sid"])
 
-    # todo: pick a fast one
+    def get_image_source(self, stack_id: int, mirror_id: tp.Optional[int] = None):
+        sinfo = next(self.get_stack_infos([stack_id]))
+        mirrors_by_id = {
+            m["id"]: m for m in sinfo["mirrors"]
+        }
+        if mirror_id is None:
+            mirror_id = min(mirrors_by_id)
+
+        mirror = mirrors_by_id[mirror_id]
+        return CatmaidImageSource.from_stack_info(sinfo, mirror)
+
+    def select_stack_mirror(self):
+        stacks = self.get_stack_infos()
+        stack_options = {
+            s["sid"]: f"{s['stitle']}: {s['description']}" for s in stacks
+        }
+        stack_id = cli_select(stack_options, "Select stack by ID.")
+        stack = next(s for s in stacks if s["id"] == stack_id)
+        mirror_options = {
+            m["id"]: f"{m['title']} ({m['image_base']})" for m in stack["mirrors"]
+        }
+        mirror_id = cli_select(mirror_options, "Select mirror by ID.")
+        mirror = next(m for m in stack["mirrors"] if m["id"] == mirror_id)
+
+        return CatmaidImageSource.from_stack_info(stack, mirror)
 
 
-
-
-class CatmaidTileSource(SegmentationSource):
-    implemented_sources = {*STORE_CLASSES, 11, 13}
+class CatmaidImageSource(SegmentationSource):
+    implemented_sources = {*JPEG_STORE_CLASSES, 11, 13}
 
     def __init__(
         self,
@@ -157,15 +209,18 @@ class CatmaidTileSource(SegmentationSource):
         self.file_extension = file_extension
         self.tile_width = tile_width
         self.tile_height = tile_height
-        if orientation != "XY":
-            raise NotImplementedError("Only XY orientation is currently supported")
+        supported_orientation = DIMS[:-3:-1].upper()
+        if orientation != supported_orientation:
+            raise NotImplementedError(
+                f"Only {supported_orientation} orientation is currently supported"
+            )
         self.orientation = orientation
         self.tile_source_type = tile_source_type
 
         self.array = self._instantiate_array()
 
     def _instantiate_array(self):
-        if self.tile_source_type in STORE_CLASSES:
+        if self.tile_source_type in JPEG_STORE_CLASSES:
             return self._instantiate_jpeg_stack()
         elif self.tile_source_type == 11:
             return self._instantiate_n5_blocks()
@@ -175,7 +230,7 @@ class CatmaidTileSource(SegmentationSource):
             raise NotImplementedError()
 
     def _instantiate_jpeg_stack(self):
-        store = STORE_CLASSES[self.tile_source_type](
+        store = JPEG_STORE_CLASSES[self.tile_source_type](
             self.source_base_url,
             self.dimension[::-1],
             (self.tile_height, self.tile_width),
@@ -204,3 +259,17 @@ class CatmaidTileSource(SegmentationSource):
 
     def __getitem__(self, slices):
         return self.array.__getitem__(slices)
+
+    @classmethod
+    def from_stack_info(cls, stack_info: dict[str, tp.Any], mirror_info: dict[str, tp.Any]):
+        return cls(
+            mirror_info["tile_source_type"],
+            mirror_info["image_base"],
+            tuple(stack_info["dimension"][d] for d in DIMS),
+            tuple(stack_info["resolution"][d] for d in DIMS),
+            stack_info["num_zoom_levels"],
+            mirror_info["file_extension"],
+            mirror_info["tile_width"],
+            mirror_info["tile_height"],
+            stack_info["orientation"],
+        )
