@@ -11,3 +11,5 @@ skeletor>=1.0.0
 tqdm
 fuzzywuzzy
 neuprint-python
+meshio
+zarr

@@ -17,13 +17,22 @@ import fuzzywuzzy
 import neuprint as neu
 import os
 
-from abc import ABC, abstractmethod
-
+from .base import BaseDataSet
 from ..meshes.neu import NeuPrintMeshSource
 from ..skeletons.neu import NeuPrintSkeletonSource
 from ..segmentation.cloudvol import CloudVolSegmentationSource
 from ..connectivity.neu import NeuPrintConnectivitySource
 from ..annotations.neu import NeuPrintAnnotationSource
+from .catmaid import (
+    FafbVfb,
+    FancVfb,
+    FancJrc2018Vfb,
+    L1emVfb,
+    L3vncVfb,
+    Abd15Vfb,
+    IavRoboVfb,
+    IavTntVfb,
+)
 
 
 @functools.lru_cache
@@ -44,11 +53,6 @@ def get(dataset, *args, **kwargs):
                          f'you perhaps mean "{match}" instead?')
 
     return DATASETS[dataset](*args, **kwargs)
-
-
-class BaseDataSet(ABC):
-    def __repr__(self):
-        return self.__str__()
 
 
 class HemiBrain(BaseDataSet):
@@ -78,11 +82,14 @@ class HemiBrain(BaseDataSet):
         segs = [s for s in self.client.meta['neuroglancerMeta'] if s.get('dataType') == 'segmentation']
         seg_source = segs[0]['source']
 
-        self.mesh = NeuPrintMeshSource(self.client)
-        self.skeleton = NeuPrintSkeletonSource(self.client)
-        self.segmentation = CloudVolSegmentationSource(seg_source)
-        self.connectivity = NeuPrintConnectivitySource(self.client)
-        self.annotations = NeuPrintAnnotationSource(self.client)
+        super().__init__(
+            mesh=NeuPrintMeshSource(self.client),
+            skeleton=NeuPrintSkeletonSource(self.client),
+            segmentation=CloudVolSegmentationSource(seg_source),
+            connectivity=NeuPrintConnectivitySource(self.client),
+            annotations=NeuPrintAnnotationSource(self.client),
+            doi_url="https://doi.org/10.7554/eLife.57443",
+        )
 
         self.reference = 'Scheffer et al., eLife (2020)'
 
@@ -105,4 +112,14 @@ class HemiBrain(BaseDataSet):
 
 
 # Add more datasets here
-DATASETS = {'hemibrain': HemiBrain}
+DATASETS = {
+    'hemibrain': HemiBrain,
+    'fafb_vfb': FafbVfb,
+    'fanc_vfb': FancVfb,
+    'fanc_jrc2018_female_vfb': FancJrc2018Vfb,
+    'l1em_vfb': L1emVfb,
+    'l3vnc_vfb': L3vncVfb,
+    'abd1.5_vfb': Abd15Vfb,
+    'iav_robo_vfb': IavRoboVfb,
+    'iav_tnt_vfb': IavTntVfb,
+}
