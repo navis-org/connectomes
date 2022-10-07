@@ -20,11 +20,13 @@ import os
 from abc import ABC, abstractmethod
 
 from ..meshes.neu import NeuPrintMeshSource
+from ..meshes.flywire import FlywireMeshSource
 from ..skeletons.neu import NeuPrintSkeletonSource
 from ..segmentation.cloudvol import CloudVolSegmentationSource
 from ..connectivity.neu import NeuPrintConnectivitySource
+from ..connectivity.flywire import FlywireConnectivitySource
 from ..annotations.neu import NeuPrintAnnotationSource
-
+from ..utils.flywire import get_chunkedgraph_secret, set_chunkedgraph_secret
 
 @functools.lru_cache
 def get(dataset, *args, **kwargs):
@@ -57,7 +59,7 @@ class HemiBrain(BaseDataSet):
     Parameters
     ----------
     version :   str
-                Version to use. Defaults to the currently lates (1.2.1).
+                Version to use. Defaults to the currently latest (1.2.1).
     server :    str
                 The server to use. Defaults to the public service.
 
@@ -104,5 +106,43 @@ class HemiBrain(BaseDataSet):
             raise ValueError(msg)
 
 
+class FAFB(BaseDataSet):
+    """Interface with the Flywire FAFB dataset.
+
+    Parameters
+    ----------
+    dataset :   str
+                Version of dataset to use. Defaults to 'production'.
+
+    References
+    ----------
+    Zheng, Z. et al. A complete electron microscopy volume of the brain of adult
+    Drosophila melanogaster. Cell 174, 730-743 (2018)
+    """
+    def __init__(self, dataset='production'):
+        # Check if credentials are set
+        self.check_token()
+        self.dataset = dataset
+
+        self.mesh = FlywireMeshSource(self.dataset)
+        self.connectivity = FlywireConnectivitySource(self.dataset)
+        self.segmentation = None # TODO
+        self.annotations = None # TODO
+
+        self.reference = 'Zheng, Z. et al. (2018)'
+
+    def __str__(self):
+        return f'FlyWire FAFB dataset (v{self.version})'
+
+    def check_token(self):
+        """Checks whether FAFB Flywire token is set correct.
+        """
+        get_chunkedgraph_secret()
+
+    def set_token(self, token : str):
+        """Convenience method for setting the FAFB Flywire token.
+        """
+        set_chunkedgraph_secret(token)
+
 # Add more datasets here
-DATASETS = {'hemibrain': HemiBrain}
+DATASETS = {'hemibrain': HemiBrain, 'fafb': FAFB}
