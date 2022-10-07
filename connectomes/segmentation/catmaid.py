@@ -10,9 +10,12 @@ from PIL import Image
 import numpy as np
 import logging
 import sys
+from requests import Session
 
 logger = logging.getLogger(__name__)
 DIMS = "zyx"
+ORIENTATIONS = ("XY", "XZ", "ZY")
+orientation_to_idx = {k: v for v, k in enumerate(ORIENTATIONS)}
 
 zarr_meta = {
     "zarr_format": 2,
@@ -43,6 +46,7 @@ class JpegZarrStore(Store):
         ext: str = ".jpg",
         fill_value: int = 0,
         attrs: tp.Optional[dict] = None,
+        session: tp.Optional[Session] = None,
     ):
         self.url_base = url_base
         meta = zarr_meta.copy()
@@ -55,6 +59,9 @@ class JpegZarrStore(Store):
         self.scale = scale
         self.ext = ext
         self.attrs_bytes = json.dumps(attrs or dict()).encode()
+        if session is None:
+            session = Session()
+        self.session = session
 
     def __getitem__(self, key: str) -> bytes:
         if "/" in key:
@@ -66,10 +73,11 @@ class JpegZarrStore(Store):
         z, y, x = key.split(".")
         tail = self.tile_fmt.format(scale=self.scale, z=z, y=y, x=x, ext=self.ext)
         url = urljoin(self.url_base, tail)
-        try:
-            img = Image.open(url)
-        except FileNotFoundError:
+        response = self.session.get(url, stream=True)
+        if response.status_code == 404:
             raise KeyError()
+        response.raise_for_status()
+        img = Image.open(response.raw)
         return np.asarray(img).tobytes()
 
     def __delitem__(self, _):
@@ -86,15 +94,15 @@ class JpegZarrStore(Store):
 
 
 class JpegZarrStore1(JpegZarrStore):
-    fmt = "{z}/{y}_{x}_{scale}.{ext}"
+    tile_fmt = "{z}/{y}_{x}_{scale}.{ext}"
 
 
 class JpegZarrStore4(JpegZarrStore):
-    fmt = "{z}/{scale}/{y}_{x}.{ext}"
+    tile_fmt = "{z}/{scale}/{y}_{x}.{ext}"
 
 
 class JpegZarrStore5(JpegZarrStore):
-    fmt = "{scale}/{z}/{y}/{x}.{ext}"
+    tile_fmt = "{scale}/{z}/{y}/{x}.{ext}"
 
 
 JPEG_STORE_CLASSES = {
@@ -114,14 +122,16 @@ def cli_select(options: dict[int, str], prompt: str = ""):
         p(f"{k}. {v}")
 
     opt_str = ", ".join(str(o for o in sorted(options)))
-    selection = input("Selection: ").strip()
     while True:
         try:
-            idx = options[int(selection)]
+            selection = int(input("Selection: ").strip())
         except (ValueError, KeyError):
-            p(f"Selection not recognised, must be one of {opt_str}.")
-        else:
-            return idx
+            p(f"Selection must be an integer.")
+            continue
+        if selection not in options:
+            p(f"Selection must be one of {opt_str}")
+            continue
+        return selection
 
 
 class CatmaidImageSourceSelector:
@@ -132,7 +142,7 @@ class CatmaidImageSourceSelector:
     def get_stacks(self):
         return self.client.get(f"{self.project_id}/stacks").json()
 
-    def get_stack_infos(self, stack_ids=None, filter_usable=True):
+    def get_stack_infos(self, stack_ids=None, filter_usable=True, filter_accessible=False):
         if stack_ids is None:
             stack_ids = [d["id"] for d in self.get_stacks()]
 
@@ -146,8 +156,8 @@ class CatmaidImageSourceSelector:
                 yield d
                 continue
 
-            if d["orientation"] != "XY":
-                logger.debug("Filtered stack %s for unsupported orientation '%s'", d["sid"], d["orientation"])
+            if d["orientation"] != orientation_to_idx["XY"]:
+                logger.debug("Filtered stack %s for unsupported orientation %s", d["sid"], ORIENTATIONS[d["orientation"]])
                 continue
 
             d["mirrors"] = [
@@ -155,10 +165,36 @@ class CatmaidImageSourceSelector:
                 for mirror in d["mirrors"]
                 if mirror["tile_source_type"] in CatmaidImageSource.implemented_sources
             ]
-            if d["mirrors"]:
-                yield d
-            else:
+            if not d["mirrors"]:
                 logger.debug("Filtered stack %s for no usable mirrors", d["sid"])
+            elif filter_accessible:
+                yield self._filter_accessible(d)
+            else:
+                yield d
+
+    def _filter_accessible(self, stack_info: dict[str, tp.Any]):
+        logger.info("Filtering accessible stack mirrors, may take a few seconds")
+        new_mirrors = []
+        loc = stack_info["canary_location"]
+        canary_slice = tuple(slice(loc[d], loc[d]+1) for d in DIMS)
+        for mirror_info in stack_info["mirrors"]:
+
+            try:
+                arr = CatmaidImageSource.from_stack_info(stack_info, mirror_info)
+            except NotImplementedError:
+                continue
+
+            try:
+                arr[canary_slice]
+            except Exception:
+                logger.exception("Inaccessible mirror %s for stack %s", mirror_info["id"], stack_info["sid"])
+                continue
+
+            new_mirrors.append(mirror_info)
+
+        sinfo = stack_info.copy()
+        sinfo["mirrors"] = new_mirrors
+        return sinfo
 
     def get_image_source(self, stack_id: int, mirror_id: tp.Optional[int] = None):
         sinfo = next(self.get_stack_infos([stack_id]))
@@ -172,16 +208,18 @@ class CatmaidImageSourceSelector:
         return CatmaidImageSource.from_stack_info(sinfo, mirror)
 
     def select_stack_mirror(self):
-        stacks = self.get_stack_infos()
+        stacks = list(self.get_stack_infos())
+        if not stacks:
+            logger.warning("No stacks found")
         stack_options = {
-            s["sid"]: f"{s['stitle']}: {s['description']}" for s in stacks
+            s["sid"]: ": ".join([s["stitle"], s["description"]]) for s in stacks
         }
-        stack_id = cli_select(stack_options, "Select stack by ID.")
-        stack = next(s for s in stacks if s["id"] == stack_id)
+        stack_id = int(cli_select(stack_options, "Select stack by ID."))
+        stack = next(s for s in stacks if s["sid"] == stack_id)
         mirror_options = {
             m["id"]: f"{m['title']} ({m['image_base']})" for m in stack["mirrors"]
         }
-        mirror_id = cli_select(mirror_options, "Select mirror by ID.")
+        mirror_id = int(cli_select(mirror_options, "Select mirror by ID."))
         mirror = next(m for m in stack["mirrors"] if m["id"] == mirror_id)
 
         return CatmaidImageSource.from_stack_info(stack, mirror)
@@ -232,7 +270,7 @@ class CatmaidImageSource(SegmentationSource):
     def _instantiate_jpeg_stack(self):
         store = JPEG_STORE_CLASSES[self.tile_source_type](
             self.source_base_url,
-            self.dimension[::-1],
+            self.dimension,
             (self.tile_height, self.tile_width),
             ext=self.file_extension,
         )
@@ -245,6 +283,7 @@ class CatmaidImageSource(SegmentationSource):
         if tail != "2_1_0":
             raise NotImplementedError("Only N5 volumes sliced in dimensions 2, 1, 0 are supported")
         root_components = []
+        # todo: look up for attributes.json
         components = iter(split[:-1])
         for component in components:
             root_components.append(component)
@@ -271,5 +310,5 @@ class CatmaidImageSource(SegmentationSource):
             mirror_info["file_extension"],
             mirror_info["tile_width"],
             mirror_info["tile_height"],
-            stack_info["orientation"],
+            ORIENTATIONS[stack_info["orientation"]],
         )
