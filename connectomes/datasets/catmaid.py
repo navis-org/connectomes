@@ -10,7 +10,7 @@ from ..segmentation.catmaid import CatmaidImageSourceSelector
 
 
 class CatmaidDataSet(BaseDataSet):
-    def __init__(self, client: CatmaidClient, project_id: int, doi_url=None, stack_mirror_ids: tp.Optional[tuple[int, int]]=None):
+    def __init__(self, client: CatmaidClient, project_id: int, doi=None, stack_mirror_ids: tp.Optional[tuple[int, int]]=None):
         self.url = client.server
         if stack_mirror_ids:
             selector = CatmaidImageSourceSelector(client, project_id)
@@ -23,7 +23,7 @@ class CatmaidDataSet(BaseDataSet):
             mesh=CatmaidMeshSource(client, project_id),
             segmentation=img,
             skeleton=CatmaidSkeletonSource(client, project_id),
-            doi_url=doi_url
+            doi=doi,
         )
         self.client = client
         self.project_id = project_id
@@ -53,45 +53,44 @@ class VfbDataSet(CatmaidDataSet):
         )
 
 
-# TODO: DOIs
 # TODO: check stacks/mirrors
 
 class FafbVfb(VfbDataSet):
     slug = "fafb"
-    doi_url = ""
+    doi = "10.1016/j.cell.2018.06.019"
 
 
 class FancVfb(VfbDataSet):
     slug = "fanc"
-    doi_url = ""
+    doi = "10.1016/j.cell.2020.12.013"
 
 
 class FancJrc2018Vfb(VfbDataSet):
     slug = "fanc"
     project_id = 2
-    doi_url = ""
+    doi = "10.1016/j.cell.2020.12.013"
 
 
 class L1emVfb(VfbDataSet):
     slug = "l1em"
-    doi_url = ""
+    doi = "10.1038/nature14297"
 
 
 class L3vncVfb(VfbDataSet):
     slug = "l3vnc"
-    doi_url = ""
+    doi = "10.7554/eLife.29089"
 
 
 class Abd15Vfb(VfbDataSet):
     slug = "abd1.5"
-    doi_url = ""
+    doi = "10.1038/nature14297"
 
 
 class IavRoboVfb(VfbDataSet):
     slug = "iav-robo"
-    doi_url = ""
+    doi = "10.1016/j.neuron.2020.10.004"
 
 
 class IavTntVfb(VfbDataSet):
     slug = "iav-tnt"
-    doi_url = ""
+    doi = "10.1016/j.neuron.2020.10.004"

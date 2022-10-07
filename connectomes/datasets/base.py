@@ -2,6 +2,7 @@ from abc import ABC
 import typing as tp
 import webbrowser
 import logging
+from urllib.parse import urljoin
 
 if tp.TYPE_CHECKING:
     from ..annotations.base import AnnotationSource
@@ -12,6 +13,7 @@ if tp.TYPE_CHECKING:
 
 
 logger = logging.getLogger(__name__)
+DOI_ORG = "https://doi.org/"
 
 
 class BaseDataSet(ABC):
@@ -22,20 +24,21 @@ class BaseDataSet(ABC):
         mesh: tp.Optional["MeshSource"] = None,
         segmentation: tp.Optional["SegmentationSource"] = None,
         skeleton: tp.Optional["SkeletonSource"] = None,
-        doi_url: tp.Optional[str] = None,
+        doi: tp.Optional[str] = None,
     ) -> None:
         self.annotations = annotations
         self.connectivity = connectivity
         self.mesh = mesh
         self.segmentation = segmentation
         self.skeleton = skeleton
-        self.doi_url = doi_url
+        self.doi = doi
 
     def view_reference(self):
-        if self.doi_url is None:
+        if self.doi is None:
             logger.warning("No DOI exists for this dataset")
         else:
-            webbrowser.open(self.doi_url)
+            doi_url = urljoin(DOI_ORG, self.doi)
+            webbrowser.open(doi_url)
 
     def __repr__(self):
         return self.__str__()

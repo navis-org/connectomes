@@ -114,12 +114,12 @@ class HemiBrain(BaseDataSet):
 # Add more datasets here
 DATASETS = {
     'hemibrain': HemiBrain,
-    'fafb_vfb': FafbVfb,
-    'fanc_vfb': FancVfb,
-    'fanc_jrc2018_female_vfb': FancJrc2018Vfb,
-    'l1em_vfb': L1emVfb,
-    'l3vnc_vfb': L3vncVfb,
-    'abd1.5_vfb': Abd15Vfb,
-    'iav_robo_vfb': IavRoboVfb,
-    'iav_tnt_vfb': IavTntVfb,
+    FafbVfb.slug + "_vfb": FafbVfb,
+    FancVfb.slug: FancVfb,
+    FancJrc2018Vfb.slug + "_jrc2018": FancJrc2018Vfb,
+    L1emVfb.slug: L1emVfb,
+    L3vncVfb.slug: L3vncVfb,
+    Abd15Vfb.slug: Abd15Vfb,
+    IavRoboVfb.slug: IavRoboVfb,
+    IavTntVfb.slug: IavTntVfb,
 }

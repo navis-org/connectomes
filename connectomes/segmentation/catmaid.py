@@ -125,8 +125,8 @@ def cli_select(options: dict[int, str], prompt: str = ""):
     while True:
         try:
             selection = int(input("Selection: ").strip())
-        except (ValueError, KeyError):
-            p(f"Selection must be an integer.")
+        except ValueError:
+            p("Selection must be an integer.")
             continue
         if selection not in options:
             p(f"Selection must be one of {opt_str}")
